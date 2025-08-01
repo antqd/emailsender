@@ -23,7 +23,7 @@ app.post("/api/sendEmail", async (req, res) => {
   try {
     await transporter.sendMail({
       from: `"Energy Planner" <${process.env.EMAIL_USER}>`,
-      to: "info@energyplanner.it",
+      to: "megliorisparmiare@gmail.com",
       subject: `Nuova candidatura da ${nome}`,
       html: `
         <p><strong>Nome:</strong> ${nome}</p>
@@ -61,7 +61,7 @@ app.post("/api/sendEmailAlt", async (req, res) => {
   try {
     await transporter.sendMail({
       from: `"Energy Planner" <${process.env.EMAIL_USER}>`,
-      to: "backoffice@energyplanner.it",
+      to: "megliorisparmiare@gmail.com",
       subject: `Candidatura da ${nome}`,
       html: `
         <p>Nome: ${nome}</p>
