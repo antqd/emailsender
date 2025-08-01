@@ -72,6 +72,7 @@ app.post("/api/sendEmailAlt", async (req, res) => {
         filename: a.filename,
         content: Buffer.from(a.content, "base64"),
         encoding: "base64",
+         contentType: "application/pdf" // utile per garantire apertura corretta
       })),
     });
 
