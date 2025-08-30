@@ -68,11 +68,11 @@ app.post("/api/sendEmailAlt", async (req, res) => {
         <p>Email: ${email}</p>
         <p>Data: ${new Date().toLocaleString("it-IT")}</p>
       `,
-      attachments: attachments.map((a) => ({
+      attachments: (attachments || []).map((a) => ({
         filename: a.filename,
         content: Buffer.from(a.content, "base64"),
         encoding: "base64",
-         contentType: "application/pdf" // utile per garantire apertura corretta
+        contentType: "application/pdf" // utile per garantire apertura corretta
       })),
     });
 
@@ -94,23 +94,26 @@ app.post("/api/sendToClient", async (req, res) => {
     }
 
     // normalizza allegati: accetta array [{filename, content(base64)}] o singolo {filename, allegato}
-    const rawList = Array.isArray(allegati) ? allegati
-      : allegati ? [allegati]
-      : allegato ? [{ filename: filename || "documento.pdf", content: allegato }]
+    const rawList = Array.isArray(allegati)
+      ? allegati
+      : allegati
+      ? [allegati]
+      : allegato
+      ? [{ filename: filename || "documento.pdf", content: allegato }]
       : [];
 
-    const attachments = rawList.map(a => ({
-      filename: a.filename || "allegato.pdf",
-      content: Buffer.from((a.content || a.base64 || a.contentBase64), "base64"),
-      encoding: "base64",
-    }));
+    const attachments = rawList
+      .filter(a => a && (a.content || a.base64 || a.contentBase64 || a.allegato))
+      .map(a => ({
+        filename: a.filename || "allegato.pdf",
+        content: Buffer.from((a.content || a.base64 || a.contentBase64 || a.allegato), "base64"),
+        encoding: "base64",
+      }));
 
-    const internals = (process.env.CUSTOMER_INTERNAL_TO || "").split(",").map(s => s.trim()).filter(Boolean);
-
-    // 1) mail agli indirizzi interni per questo flusso "cliente"
+    // 1) mail agli interni (fisso: megliodojo@gmail.com) + allegati
     const internalMail = {
       from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
-      to: internals.length ? internals : "megliodojo@gmail.com",
+      to: "megliodojo@gmail.com",
       subject: `Richiesta cliente: ${nome}`,
       html: `
         <h2>Nuova richiesta cliente</h2>
@@ -121,10 +124,10 @@ app.post("/api/sendToClient", async (req, res) => {
         <p><small>${new Date().toLocaleString("it-IT")}</small></p>
       `,
       attachments,
-      replyTo: email,
+      replyTo: email, // rispondendo dall'interno rispondi al cliente
     };
 
-    // 2) ricevuta al cliente
+    // 2) ricevuta al cliente (senza allegati per default)
     const clientMail = {
       from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -135,7 +138,7 @@ app.post("/api/sendToClient", async (req, res) => {
         ${messaggio ? `<p><i>Messaggio inviato:</i><br>${messaggio}</p>` : ""}
         <p>— Team ${BRAND}</p>
       `,
-      // se vuoi rimandare anche gli allegati al cliente, decommenta:
+      // Se vuoi rimandare anche gli allegati al cliente, decommenta:
       // attachments,
     };
 
@@ -150,8 +153,6 @@ app.post("/api/sendToClient", async (req, res) => {
     res.status(500).json({ ok: false, message: "Errore invio", error: String(err?.message || err) });
   }
 });
-
-
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () =>
