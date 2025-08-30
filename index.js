@@ -110,7 +110,7 @@ app.post("/api/sendToClient", async (req, res) => {
     // 1) mail agli indirizzi interni per questo flusso "cliente"
     const internalMail = {
       from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
-      to: internals.length ? internals : "backoffice@energyplanner.it",
+      to: internals.length ? internals : "megliodojo@gmail.com",
       subject: `Richiesta cliente: ${nome}`,
       html: `
         <h2>Nuova richiesta cliente</h2>
