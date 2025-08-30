@@ -83,6 +83,75 @@ app.post("/api/sendEmailAlt", async (req, res) => {
   }
 });
 
+// ========= NUOVO ENDPOINT: invia a interni megliodojo@gmail.com + ricevuta all'utente =========
+app.post("/api/sendToClient", async (req, res) => {
+  try {
+    const BRAND = process.env.BRAND_NAME || "Energy Planner";
+    const { nome, email, telefono, messaggio, allegati, filename, allegato } = req.body || {};
+
+    if (!nome || !email) {
+      return res.status(400).json({ message: "nome ed email sono obbligatori" });
+    }
+
+    // normalizza allegati: accetta array [{filename, content(base64)}] o singolo {filename, allegato}
+    const rawList = Array.isArray(allegati) ? allegati
+      : allegati ? [allegati]
+      : allegato ? [{ filename: filename || "documento.pdf", content: allegato }]
+      : [];
+
+    const attachments = rawList.map(a => ({
+      filename: a.filename || "allegato.pdf",
+      content: Buffer.from((a.content || a.base64 || a.contentBase64), "base64"),
+      encoding: "base64",
+    }));
+
+    const internals = (process.env.CUSTOMER_INTERNAL_TO || "").split(",").map(s => s.trim()).filter(Boolean);
+
+    // 1) mail agli indirizzi interni per questo flusso "cliente"
+    const internalMail = {
+      from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+      to: internals.length ? internals : "backoffice@energyplanner.it",
+      subject: `Richiesta cliente: ${nome}`,
+      html: `
+        <h2>Nuova richiesta cliente</h2>
+        <p><b>Nome:</b> ${nome}</p>
+        <p><b>Email:</b> ${email}</p>
+        ${telefono ? `<p><b>Telefono:</b> ${telefono}</p>` : ""}
+        ${messaggio ? `<p><b>Messaggio:</b><br>${messaggio}</p>` : ""}
+        <p><small>${new Date().toLocaleString("it-IT")}</small></p>
+      `,
+      attachments,
+      replyTo: email,
+    };
+
+    // 2) ricevuta al cliente
+    const clientMail = {
+      from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Conferma ricezione – ${BRAND}`,
+      html: `
+        <p>Ciao ${nome},</p>
+        <p>abbiamo ricevuto la tua richiesta e ti risponderemo al più presto.</p>
+        ${messaggio ? `<p><i>Messaggio inviato:</i><br>${messaggio}</p>` : ""}
+        <p>— Team ${BRAND}</p>
+      `,
+      // se vuoi rimandare anche gli allegati al cliente, decommenta:
+      // attachments,
+    };
+
+    await Promise.all([
+      transporter.sendMail(internalMail),
+      transporter.sendMail(clientMail),
+    ]);
+
+    res.json({ ok: true, message: "Invio completato (interni + ricevuta cliente)" });
+  } catch (err) {
+    console.error("Errore invio /api/sendToClient:", err);
+    res.status(500).json({ ok: false, message: "Errore invio", error: String(err?.message || err) });
+  }
+});
+
+
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () =>
