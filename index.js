@@ -83,7 +83,7 @@ app.post("/api/sendEmailAlt", async (req, res) => {
   }
 });
 
-// ========= NUOVO ENDPOINT: invia a interni megliodojo@gmail.com + ricevuta all'utente =========
+// ========= INVIA LA STESSA MAIL A MEGLIODOJO + CLIENTE =========
 app.post("/api/sendToClient", async (req, res) => {
   try {
     const BRAND = process.env.BRAND_NAME || "Energy Planner";
@@ -93,7 +93,7 @@ app.post("/api/sendToClient", async (req, res) => {
       return res.status(400).json({ message: "nome ed email sono obbligatori" });
     }
 
-    // normalizza allegati: accetta array [{filename, content(base64)}] o singolo {filename, allegato}
+    // Normalizza allegati: accetta array [{filename, content(base64)}] o singolo {filename, allegato}
     const rawList = Array.isArray(allegati)
       ? allegati
       : allegati
@@ -110,49 +110,43 @@ app.post("/api/sendToClient", async (req, res) => {
         encoding: "base64",
       }));
 
-    // 1) mail agli interni (fisso: megliodojo@gmail.com) + allegati
-    const internalMail = {
-      from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
-      to: "megliodojo@gmail.com",
-      subject: `Richiesta cliente: ${nome}`,
-      html: `
-        <h2>Nuova richiesta cliente</h2>
-        <p><b>Nome:</b> ${nome}</p>
-        <p><b>Email:</b> ${email}</p>
-        ${telefono ? `<p><b>Telefono:</b> ${telefono}</p>` : ""}
-        ${messaggio ? `<p><b>Messaggio:</b><br>${messaggio}</p>` : ""}
-        <p><small>${new Date().toLocaleString("it-IT")}</small></p>
-      `,
-      attachments,
-      replyTo: email, // rispondendo dall'interno rispondi al cliente
-    };
+    // Stesso subject + stesso HTML per entrambi
+    const subject = `Richiesta ${BRAND} – ${nome}`;
+    const html = `
+      <h2>Dettagli richiesta</h2>
+      <p><b>Nome:</b> ${nome}</p>
+      <p><b>Email:</b> ${email}</p>
+      ${telefono ? `<p><b>Telefono:</b> ${telefono}</p>` : ""}
+      ${messaggio ? `<p><b>Messaggio:</b><br>${messaggio}</p>` : ""}
+      <p><small>${new Date().toLocaleString("it-IT")}</small></p>
+    `;
 
-    // 2) ricevuta al cliente (senza allegati per default)
-    const clientMail = {
-      from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: `Conferma ricezione – ${BRAND}`,
-      html: `
-        <p>Ciao ${nome},</p>
-        <p>abbiamo ricevuto la tua richiesta e ti risponderemo al più presto.</p>
-        ${messaggio ? `<p><i>Messaggio inviato:</i><br>${messaggio}</p>` : ""}
-        <p>— Team ${BRAND}</p>
-      `,
-      // Se vuoi rimandare anche gli allegati al cliente, decommenta:
-      // attachments,
-    };
-
+    // Invia la stessa identica mail (contenuti + allegati) a entrambi
     await Promise.all([
-      transporter.sendMail(internalMail),
-      transporter.sendMail(clientMail),
+      transporter.sendMail({
+        from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+        to: "megliodojo@gmail.com",
+        subject,
+        html,
+        attachments,
+        replyTo: email, // così rispondendo si contatta direttamente il cliente
+      }),
+      transporter.sendMail({
+        from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject,
+        html,
+        attachments,
+      }),
     ]);
 
-    res.json({ ok: true, message: "Invio completato (interni + ricevuta cliente)" });
+    res.json({ ok: true, message: "Stessa mail inviata a cliente e interni" });
   } catch (err) {
     console.error("Errore invio /api/sendToClient:", err);
     res.status(500).json({ ok: false, message: "Errore invio", error: String(err?.message || err) });
   }
 });
+
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () =>
