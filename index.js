@@ -5,7 +5,7 @@ const cors = require("cors");
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
 
 // ✅ Trasportatore SMTP comune a tutte le rotte
 const transporter = nodemailer.createTransport({
@@ -72,7 +72,7 @@ app.post("/api/sendEmailAlt", async (req, res) => {
         filename: a.filename,
         content: Buffer.from(a.content, "base64"),
         encoding: "base64",
-        contentType: "application/pdf" // utile per garantire apertura corretta
+        contentType: "application/pdf", // utile per garantire apertura corretta
       })),
     });
 
@@ -87,10 +87,13 @@ app.post("/api/sendEmailAlt", async (req, res) => {
 app.post("/api/sendToClient", async (req, res) => {
   try {
     const BRAND = process.env.BRAND_NAME || "Energy Planner";
-    const { nome, email, telefono, messaggio, allegati, filename, allegato } = req.body || {};
+    const { nome, email, telefono, messaggio, allegati, filename, allegato } =
+      req.body || {};
 
     if (!nome || !email) {
-      return res.status(400).json({ message: "nome ed email sono obbligatori" });
+      return res
+        .status(400)
+        .json({ message: "nome ed email sono obbligatori" });
     }
 
     // Normalizza allegati: accetta array [{filename, content(base64)}] o singolo {filename, allegato}
@@ -103,10 +106,15 @@ app.post("/api/sendToClient", async (req, res) => {
       : [];
 
     const attachments = rawList
-      .filter(a => a && (a.content || a.base64 || a.contentBase64 || a.allegato))
-      .map(a => ({
+      .filter(
+        (a) => a && (a.content || a.base64 || a.contentBase64 || a.allegato)
+      )
+      .map((a) => ({
         filename: a.filename || "allegato.pdf",
-        content: Buffer.from((a.content || a.base64 || a.contentBase64 || a.allegato), "base64"),
+        content: Buffer.from(
+          a.content || a.base64 || a.contentBase64 || a.allegato,
+          "base64"
+        ),
         encoding: "base64",
       }));
 
@@ -143,10 +151,95 @@ app.post("/api/sendToClient", async (req, res) => {
     res.json({ ok: true, message: "Stessa mail inviata a cliente e interni" });
   } catch (err) {
     console.error("Errore invio /api/sendToClient:", err);
-    res.status(500).json({ ok: false, message: "Errore invio", error: String(err?.message || err) });
+    res
+      .status(500)
+      .json({
+        ok: false,
+        message: "Errore invio",
+        error: String(err?.message || err),
+      });
   }
 });
 
+// ========= NUOVO: invia SOLO agli interni (niente mail al cliente) =========
+app.post("/api/sendToInternalOnly", async (req, res) => {
+  try {
+    const BRAND = process.env.BRAND_NAME || "Energy Planner";
+    const { nome, email, telefono, messaggio, allegati, filename, allegato } =
+      req.body || {};
+
+    if (!nome || !email) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "nome ed email sono obbligatori" });
+    }
+
+    // normalizza allegati: array [{ filename, base64|content|contentBase64 }] o singolo {filename, allegato}
+    const rawList = Array.isArray(allegati)
+      ? allegati
+      : allegati
+      ? [allegati]
+      : allegato
+      ? [{ filename: filename || "documento.pdf", base64: allegato }]
+      : [];
+
+    const attachments = rawList
+      .filter((a) => a && (a.base64 || a.content || a.contentBase64))
+      .map((a) => ({
+        filename: a.filename || "allegato.pdf",
+        content: Buffer.from(
+          a.base64 || a.content || a.contentBase64,
+          "base64"
+        ),
+        encoding: "base64",
+      }));
+
+    // destinatari interni solo per questo flusso
+    // se vuoi tenerli separati, definisci INTERNAL_ONLY_TO nel .env
+    const internalOnly = (
+      process.env.INTERNAL_ONLY_TO ||
+      process.env.CUSTOMER_INTERNAL_TO ||
+      "megliodojo@gmail.com"
+    )
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (!internalOnly.length) {
+      return res
+        .status(500)
+        .json({ ok: false, message: "Destinatari interni non configurati" });
+    }
+
+    await transporter.sendMail({
+      from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+      to: internalOnly,
+      subject: `Nuova richiesta (solo interni): ${nome}`,
+      html: `
+        <h2>Nuova richiesta</h2>
+        <p><b>Nome:</b> ${nome}</p>
+        <p><b>Email cliente:</b> ${email}</p>
+        ${telefono ? `<p><b>Telefono:</b> ${telefono}</p>` : ""}
+        ${messaggio ? `<p><b>Messaggio:</b><br>${messaggio}</p>` : ""}
+        <p><small>${new Date().toLocaleString("it-IT")}</small></p>
+      `,
+      attachments,
+      replyTo: email,
+    });
+
+    // nessuna mail al cliente qui
+    return res.json({ ok: true, message: "Inoltro agli interni completato" });
+  } catch (err) {
+    console.error("Errore /api/sendToInternalOnly:", err);
+    return res
+      .status(500)
+      .json({
+        ok: false,
+        message: "Errore invio",
+        error: String(err?.message || err),
+      });
+  }
+});
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () =>
