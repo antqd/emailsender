@@ -5,7 +5,10 @@ const cors = require("cors");
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+
+// ⬆️ ALZO I LIMITI (prima erano 10mb)
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // ✅ Trasportatore SMTP comune a tutte le rotte
 const transporter = nodemailer.createTransport({
@@ -151,13 +154,11 @@ app.post("/api/sendToClient", async (req, res) => {
     res.json({ ok: true, message: "Stessa mail inviata a cliente e interni" });
   } catch (err) {
     console.error("Errore invio /api/sendToClient:", err);
-    res
-      .status(500)
-      .json({
-        ok: false,
-        message: "Errore invio",
-        error: String(err?.message || err),
-      });
+    res.status(500).json({
+      ok: false,
+      message: "Errore invio",
+      error: String(err?.message || err),
+    });
   }
 });
 
@@ -195,7 +196,6 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
       }));
 
     // destinatari interni solo per questo flusso
-    // se vuoi tenerli separati, definisci INTERNAL_ONLY_TO nel .env
     const internalOnly = (
       process.env.INTERNAL_ONLY_TO ||
       process.env.CUSTOMER_INTERNAL_TO ||
@@ -231,13 +231,11 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
     return res.json({ ok: true, message: "Inoltro agli interni completato" });
   } catch (err) {
     console.error("Errore /api/sendToInternalOnly:", err);
-    return res
-      .status(500)
-      .json({
-        ok: false,
-        message: "Errore invio",
-        error: String(err?.message || err),
-      });
+    return res.status(500).json({
+      ok: false,
+      message: "Errore invio",
+      error: String(err?.message || err),
+    });
   }
 });
 
