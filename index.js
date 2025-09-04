@@ -6,7 +6,7 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
-// ⬆️ limiti alzati
+// limiti alzati
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -22,14 +22,15 @@ const transporter = nodemailer.createTransport({
 // ================== HELPERS ==================
 /**
  * Normalizza gli allegati dal body:
- * - accetta array [{filename, content|base64|contentBase64|allegato}] oppure singolo {filename, allegato}
+ * - accetta array in `allegati` o `attachments` [{filename, content|base64|contentBase64|allegato}]
+ * - accetta singolo `{filename, allegato}` (string base64)
  * - ritorna array compatibile con nodemailer
  */
-function normalizeAttachments({ allegati, allegato, filename }) {
-  const rawList = Array.isArray(allegati)
-    ? allegati
-    : allegati
-    ? [allegati]
+function normalizeAttachments({ allegati, attachments, allegato, filename }) {
+  const rawList = Array.isArray(allegati || attachments)
+    ? allegati || attachments
+    : allegati || attachments
+    ? [allegati || attachments]
     : allegato
     ? [{ filename: filename || "documento.pdf", base64: allegato }]
     : [];
@@ -45,7 +46,6 @@ function normalizeAttachments({ allegati, allegato, filename }) {
         "base64"
       ),
       encoding: "base64",
-      // contentType opzionale: proviamo a dedurre dal filename
       contentType: (a.filename || "").toLowerCase().endsWith(".pdf")
         ? "application/pdf"
         : undefined,
@@ -54,13 +54,6 @@ function normalizeAttachments({ allegati, allegato, filename }) {
 
 /**
  * Invia la stessa mail (stesso contenuto + allegati) agli interni e al cliente.
- * @param {Object} opt
- * @param {string[]} opt.toInternals - destinatari interni
- * @param {string} opt.toClient - email cliente
- * @param {string} opt.subject
- * @param {string} opt.html
- * @param {Array}  opt.attachments
- * @param {string} [opt.brand]
  */
 async function sendToInternalsAndClient({
   toInternals,
@@ -101,9 +94,7 @@ async function sendToInternalsAndClient({
   await Promise.all(tasks);
 }
 
-/**
- * Utility per comporre HTML standard a partire dal body
- */
+/** HTML standard */
 function composeHtml({ nome, email, telefono, messaggio }) {
   return `
     <h2>Dettagli richiesta</h2>
@@ -115,10 +106,7 @@ function composeHtml({ nome, email, telefono, messaggio }) {
   `;
 }
 
-/**
- * Estrae lista destinatari interni da env o fallback
- * env var accettate: <KEY>_TO (stringa comma-separated)
- */
+/** Ricava lista destinatari interni */
 function getInternalRecipients(envKey, fallback) {
   const raw =
     process.env[envKey] ||
@@ -133,9 +121,9 @@ function getInternalRecipients(envKey, fallback) {
   return fallback;
 }
 
-// ================== ENDPOINT ESISTENTI (TUOI) ==================
+// ================== ENDPOINT ESISTENTI ==================
 
-// 🎯 Invio principale (info@energyplanner.it)
+// invio principale
 app.post("/api/sendEmail", async (req, res) => {
   const { nome, email, allegato, filename } = req.body;
 
@@ -165,7 +153,7 @@ app.post("/api/sendEmail", async (req, res) => {
   }
 });
 
-// 🎯 Invio alternativo (backoffice@energyplanner.it)
+// invio alternativo
 app.post("/api/sendEmailAlt", async (req, res) => {
   const { nome, email, attachments } = req.body;
 
@@ -194,12 +182,20 @@ app.post("/api/sendEmailAlt", async (req, res) => {
   }
 });
 
-// ========= INVIA LA STESSA MAIL A INTERNI + CLIENTE =========
+// stessi contenuti a interni + cliente
 app.post("/api/sendToClient", async (req, res) => {
   try {
     const BRAND = process.env.BRAND_NAME || "Energy Planner";
-    const { nome, email, telefono, messaggio, allegati, filename, allegato } =
-      req.body || {};
+    const {
+      nome,
+      email,
+      telefono,
+      messaggio,
+      allegati,
+      attachments,
+      filename,
+      allegato,
+    } = req.body || {};
 
     if (!nome || !email) {
       return res
@@ -207,7 +203,12 @@ app.post("/api/sendToClient", async (req, res) => {
         .json({ message: "nome ed email sono obbligatori" });
     }
 
-    const attachments = normalizeAttachments({ allegati, allegato, filename });
+    const atts = normalizeAttachments({
+      allegati,
+      attachments,
+      allegato,
+      filename,
+    });
 
     const subject = `Richiesta ${BRAND} – ${nome}`;
     const html = composeHtml({ nome, email, telefono, messaggio });
@@ -218,7 +219,7 @@ app.post("/api/sendToClient", async (req, res) => {
         to: "megliodojo@gmail.com",
         subject,
         html,
-        attachments,
+        attachments: atts,
         replyTo: email,
       }),
       transporter.sendMail({
@@ -226,7 +227,7 @@ app.post("/api/sendToClient", async (req, res) => {
         to: email,
         subject,
         html,
-        attachments,
+        attachments: atts,
       }),
     ]);
 
@@ -241,12 +242,20 @@ app.post("/api/sendToClient", async (req, res) => {
   }
 });
 
-// ========= SOLO INTERNI =========
+// solo interni
 app.post("/api/sendToInternalOnly", async (req, res) => {
   try {
     const BRAND = process.env.BRAND_NAME || "Energy Planner";
-    const { nome, email, telefono, messaggio, allegati, filename, allegato } =
-      req.body || {};
+    const {
+      nome,
+      email,
+      telefono,
+      messaggio,
+      allegati,
+      attachments,
+      filename,
+      allegato,
+    } = req.body || {};
 
     if (!nome || !email) {
       return res
@@ -254,7 +263,12 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
         .json({ ok: false, message: "nome ed email sono obbligatori" });
     }
 
-    const attachments = normalizeAttachments({ allegati, allegato, filename });
+    const atts = normalizeAttachments({
+      allegati,
+      attachments,
+      allegato,
+      filename,
+    });
 
     const internalOnly = getInternalRecipients("INTERNAL_ONLY_TO", [
       "megliodojo@gmail.com",
@@ -271,7 +285,7 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
       to: internalOnly,
       subject: `Nuova richiesta (solo interni): ${nome}`,
       html: composeHtml({ nome, email, telefono, messaggio }),
-      attachments,
+      attachments: atts,
       replyTo: email,
     });
 
@@ -287,11 +301,8 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
 });
 
 // ================== NUOVI ENDPOINT PER MODULI ==================
-// Dalla nota: inviare i moduli a cliente + backoffice specifici.
-// Di default uso i destinatari qui sotto, ma TUTTO è overrideabile via env.
 
 const DEFAULTS = {
-  // Screenshot: "Backoffice@energyplanner.it" e "Danielveradi29@gmail.com"
   VIVI_DEST: ["backoffice@energyplanner.it", "danielveradi29@gmail.com"],
   COMPARATOR_DEST: ["backoffice@energyplanner.it", "danielveradi29@gmail.com"],
   CONTRATTO_DEST: ["backoffice@energyplanner.it", "danielveradi29@gmail.com"],
@@ -299,13 +310,9 @@ const DEFAULTS = {
     "backoffice@energyplanner.it",
     "danielveradi29@gmail.com",
   ],
-  // Screenshot: "Backoffice@energiplanner.it" (possibile refuso) + "Jonathanlikaj1@gmail.com"
   FV_BUSINESS_DEST: ["backoffice@energyplanner.it", "jonathanlikaj1@gmail.com"],
 };
 
-/**
- * Helper per leggere una lista comma-separated da env o usare i fallback
- */
 function getDestFromEnv(key, fallbackArr) {
   const raw = process.env[key];
   if (!raw) return fallbackArr;
@@ -316,19 +323,20 @@ function getDestFromEnv(key, fallbackArr) {
   return list.length ? list : fallbackArr;
 }
 
-/**
- * Factory di endpoint per non ripetere codice
- * @param {string} path - es. "/api/send/vivi-energia-easy"
- * @param {string} envKey - es. "VIVI_DEST_TO"
- * @param {string[]} fallback - default destinatari interni
- * @param {string} subjectPrefix - testo in subject
- */
 function registerModuleEndpoint(path, envKey, fallback, subjectPrefix) {
   app.post(path, async (req, res) => {
     try {
       const BRAND = process.env.BRAND_NAME || "Energy Planner";
-      const { nome, email, telefono, messaggio, allegati, filename, allegato } =
-        req.body || {};
+      const {
+        nome,
+        email,
+        telefono,
+        messaggio,
+        allegati,
+        attachments,
+        filename,
+        allegato,
+      } = req.body || {};
 
       if (!nome || !email) {
         return res
@@ -336,8 +344,9 @@ function registerModuleEndpoint(path, envKey, fallback, subjectPrefix) {
           .json({ ok: false, message: "nome ed email sono obbligatori" });
       }
 
-      const attachments = normalizeAttachments({
+      const atts = normalizeAttachments({
         allegati,
+        attachments,
         allegato,
         filename,
       });
@@ -350,7 +359,7 @@ function registerModuleEndpoint(path, envKey, fallback, subjectPrefix) {
         toClient: email,
         subject,
         html,
-        attachments,
+        attachments: atts,
         brand: BRAND,
         replyTo: email,
       });
@@ -370,41 +379,65 @@ function registerModuleEndpoint(path, envKey, fallback, subjectPrefix) {
   });
 }
 
-// Vivi energia easy
+// con /api/send/...
 registerModuleEndpoint(
   "/api/send/vivi-energia-easy",
   "VIVI_DEST_TO",
   DEFAULTS.VIVI_DEST,
   "Vivi energia easy"
 );
-
-// Comparatore vivi
 registerModuleEndpoint(
   "/api/send/comparatore-vivi",
   "COMPARATOR_DEST_TO",
   DEFAULTS.COMPARATOR_DEST,
   "Comparatore vivi"
 );
-
-// Contratto di vendita
 registerModuleEndpoint(
   "/api/send/contratto-vendita",
   "CONTRATTO_DEST_TO",
   DEFAULTS.CONTRATTO_DEST,
   "Contratto di vendita"
 );
-
-// Scheda cantiere
 registerModuleEndpoint(
   "/api/send/scheda-cantiere",
   "SCHEDA_CANTIERE_DEST_TO",
   DEFAULTS.SCHEDA_CANTIERE_DEST,
   "Scheda cantiere"
 );
-
-// Progetto FV business
 registerModuleEndpoint(
   "/api/send/fv-business",
+  "FV_BUSINESS_DEST_TO",
+  DEFAULTS.FV_BUSINESS_DEST,
+  "Progetto FV business"
+);
+
+// alias senza /send per evitare 404 quando incolli path brevi
+registerModuleEndpoint(
+  "/api/vivi-energia-easy",
+  "VIVI_DEST_TO",
+  DEFAULTS.VIVI_DEST,
+  "Vivi energia easy"
+);
+registerModuleEndpoint(
+  "/api/comparatore-vivi",
+  "COMPARATOR_DEST_TO",
+  DEFAULTS.COMPARATOR_DEST,
+  "Comparatore vivi"
+);
+registerModuleEndpoint(
+  "/api/contratto-vendita",
+  "CONTRATTO_DEST_TO",
+  DEFAULTS.CONTRATTO_DEST,
+  "Contratto di vendita"
+);
+registerModuleEndpoint(
+  "/api/scheda-cantiere",
+  "SCHEDA_CANTIERE_DEST_TO",
+  DEFAULTS.SCHEDA_CANTIERE_DEST,
+  "Scheda cantiere"
+);
+registerModuleEndpoint(
+  "/api/fv-business",
   "FV_BUSINESS_DEST_TO",
   DEFAULTS.FV_BUSINESS_DEST,
   "Progetto FV business"
