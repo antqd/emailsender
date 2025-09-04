@@ -303,12 +303,12 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
 // ================== NUOVI ENDPOINT PER MODULI ==================
 
 const DEFAULTS = {
-  VIVI_DEST: ["backoffice@energyplanner.it", "danielveradi29@gmail.com"],
-  COMPARATOR_DEST: ["backoffice@energyplanner.it", "danielveradi29@gmail.com"],
-  CONTRATTO_DEST: ["backoffice@energyplanner.it", "danielveradi29@gmail.com"],
+  VIVI_DEST: ["backoffice@energyplanner.it", "danielverardi29@gmail.com"],
+  COMPARATOR_DEST: ["backoffice@energyplanner.it", "danielverardi29@gmail.com"],
+  CONTRATTO_DEST: ["backoffice@energyplanner.it", "danielverardi29@gmail.com"],
   SCHEDA_CANTIERE_DEST: [
     "backoffice@energyplanner.it",
-    "danielveradi29@gmail.com",
+    "danielverardi29@gmail.com",
   ],
   FV_BUSINESS_DEST: ["backoffice@energyplanner.it", "jonathanlikaj1@gmail.com"],
 };
