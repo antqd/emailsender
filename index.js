@@ -185,7 +185,7 @@ app.post("/api/sendEmailAlt", async (req, res) => {
 // stessi contenuti a interni + cliente
 app.post("/api/sendToClient", async (req, res) => {
   try {
-    const BRAND = process.env.BRAND_NAME || "Energy Planner";
+    const BRAND = process.env.BRAND_NAME || "Dojo";
     const {
       nome,
       email,
