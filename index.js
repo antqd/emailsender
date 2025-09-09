@@ -300,9 +300,11 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
   }
 });
 
-app.post("/api/onboarding-azienda", async (req, res) => {
+// === DIVENTA PARTNER MANAGER (interni: megliodojo + copia al cliente) ===
+app.post("/api/diventa-partner-manager", async (req, res) => {
   try {
-    const BRAND = process.env.BRAND_NAME || "Energy Planner";
+    const BRAND = 'Dojo';
+    
     const {
       ragioneSociale,
       indirizzo,
@@ -312,7 +314,7 @@ app.post("/api/onboarding-azienda", async (req, res) => {
       telefono,
       email,
       iban,
-      allegati = {}, // { visura, documento_identita, codice_fiscale, firma }
+      allegati = {}, // { visura: File[]|File, documento_identita: File[]|File, codice_fiscale: File[]|File, firma: File|{...} }
     } = req.body || {};
 
     if (!ragioneSociale || !email || !iban) {
@@ -322,42 +324,34 @@ app.post("/api/onboarding-azienda", async (req, res) => {
       });
     }
 
-    // mappa allegati specifici dell'onboarding
-    const mapAtt = (x, fallbackName, fallbackMime) =>
-      x && (x.base64 || x.contentBase64 || x.content)
-        ? {
-            filename: x.filename || fallbackName,
-            content: Buffer.from(
-              x.base64 || x.contentBase64 || x.content,
-              "base64"
-            ),
-            encoding: "base64",
-            contentType: x.mime || fallbackMime,
-          }
-        : null;
+    // helper: normalizza singolo o array -> array per nodemailer
+    const mapMany = (x, fallbackName, fallbackMime) => {
+      const list = Array.isArray(x) ? x : x ? [x] : [];
+      return list
+        .filter((f) => f && (f.base64 || f.contentBase64 || f.content))
+        .map((f, i) => ({
+          filename:
+            f.filename ||
+            `${fallbackName.replace(/(\.\w+)?$/, "")}${list.length > 1 ? `_${i + 1}` : ""}${
+              (fallbackName.match(/\.\w+$/) || [".pdf"])[0]
+            }`,
+          content: Buffer.from(f.base64 || f.contentBase64 || f.content, "base64"),
+          encoding: "base64",
+          contentType: f.mime || fallbackMime,
+        }));
+    };
 
+    // allegati: visura/doc/cf multipli + firma (singola ma gestita con mapMany per semplicità)
     const atts = [
-      mapAtt(allegati.visura, "visura.pdf", "application/pdf"),
-      mapAtt(
-        allegati.documento_identita,
-        "documento_identita.pdf",
-        "application/pdf"
-      ),
-      mapAtt(allegati.codice_fiscale, "codice_fiscale.pdf", "application/pdf"),
-      mapAtt(allegati.firma, "firma.png", "image/png"),
-    ].filter(Boolean);
+      ...mapMany(allegati?.visura, "visura.pdf", "application/pdf"),
+      ...mapMany(allegati?.documento_identita, "documento_identita.pdf", "application/pdf"),
+      ...mapMany(allegati?.codice_fiscale, "codice_fiscale.pdf", "application/pdf"),
+      ...mapMany(allegati?.firma, "firma.png", "image/png"),
+    ];
 
-    const internalRecipients = (process.env.ONBOARDING_AZIENDA_DEST_TO || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const toInternals = internalRecipients.length
-      ? internalRecipients
-      : ["backoffice@energyplanner.it", "danielverardi29@gmail.com"];
-
-    const subject = `[Onboarding azienda] ${BRAND} – ${ragioneSociale}`;
+    const subject = `[Diventa Partner Manager] ${BRAND} – ${ragioneSociale}`;
     const html = `
-      <h2>Onboarding azienda</h2>
+      <h2>Diventa Partner Manager</h2>
       <p><b>Ragione sociale:</b> ${ragioneSociale}</p>
       <p><b>Indirizzo:</b> ${indirizzo || "-"}</p>
       <p><b>Comune:</b> ${comune || "-"}</p>
@@ -365,33 +359,33 @@ app.post("/api/onboarding-azienda", async (req, res) => {
       <p><b>Telefono:</b> ${telefono || "-"}</p>
       <p><b>Email:</b> ${email || "-"}</p>
       <p><b>IBAN:</b> ${iban || "-"}</p>
-      ${
-        descrizione
-          ? `<p><b>Descrizione attività:</b><br/>${descrizione}</p>`
-          : ""
-      }
+      ${descrizione ? `<p><b>Descrizione attività:</b><br/>${descrizione}</p>` : ""}
       <hr/>
-      <p style="font-size:12px;color:#555">Inviato il ${new Date().toLocaleString(
-        "it-IT"
-      )}</p>
+      <p style="font-size:12px;color:#555">Inviato il ${new Date().toLocaleString("it-IT")}</p>
     `;
 
-    await sendToInternalsAndClient({
-      toInternals,
-      toClient: email,
-      subject,
-      html,
-      attachments: atts,
-      brand: BRAND,
-      replyTo: email,
-    });
+    // invio a interni + cliente
+    await Promise.all([
+      transporter.sendMail({
+        from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+        to: ["megliodojo@gmail.com"],
+        subject,
+        html,
+        attachments: atts,
+        replyTo: email,
+      }),
+      transporter.sendMail({
+        from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject,
+        html,
+        attachments: atts,
+      }),
+    ]);
 
-    return res.json({
-      ok: true,
-      message: "Onboarding inviato a interni + cliente",
-    });
+    return res.json({ ok: true, message: "Email inviata a megliodojo + cliente" });
   } catch (err) {
-    console.error("Errore /api/onboarding-azienda:", err);
+    console.error("Errore /api/diventa-partner-manager:", err);
     return res.status(500).json({
       ok: false,
       message: "Errore invio",
@@ -399,6 +393,7 @@ app.post("/api/onboarding-azienda", async (req, res) => {
     });
   }
 });
+
 
 // ================== NUOVI ENDPOINT PER MODULI ==================
 
