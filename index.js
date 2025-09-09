@@ -300,6 +300,106 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
   }
 });
 
+app.post("/api/onboarding-azienda", async (req, res) => {
+  try {
+    const BRAND = process.env.BRAND_NAME || "Energy Planner";
+    const {
+      ragioneSociale,
+      indirizzo,
+      comune,
+      cap,
+      descrizione,
+      telefono,
+      email,
+      iban,
+      allegati = {}, // { visura, documento_identita, codice_fiscale, firma }
+    } = req.body || {};
+
+    if (!ragioneSociale || !email || !iban) {
+      return res.status(400).json({
+        ok: false,
+        message: "ragioneSociale, email e IBAN sono obbligatori",
+      });
+    }
+
+    // mappa allegati specifici dell'onboarding
+    const mapAtt = (x, fallbackName, fallbackMime) =>
+      x && (x.base64 || x.contentBase64 || x.content)
+        ? {
+            filename: x.filename || fallbackName,
+            content: Buffer.from(
+              x.base64 || x.contentBase64 || x.content,
+              "base64"
+            ),
+            encoding: "base64",
+            contentType: x.mime || fallbackMime,
+          }
+        : null;
+
+    const atts = [
+      mapAtt(allegati.visura, "visura.pdf", "application/pdf"),
+      mapAtt(
+        allegati.documento_identita,
+        "documento_identita.pdf",
+        "application/pdf"
+      ),
+      mapAtt(allegati.codice_fiscale, "codice_fiscale.pdf", "application/pdf"),
+      mapAtt(allegati.firma, "firma.png", "image/png"),
+    ].filter(Boolean);
+
+    const internalRecipients = (process.env.ONBOARDING_AZIENDA_DEST_TO || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const toInternals = internalRecipients.length
+      ? internalRecipients
+      : ["backoffice@energyplanner.it", "danielverardi29@gmail.com"];
+
+    const subject = `[Onboarding azienda] ${BRAND} – ${ragioneSociale}`;
+    const html = `
+      <h2>Onboarding azienda</h2>
+      <p><b>Ragione sociale:</b> ${ragioneSociale}</p>
+      <p><b>Indirizzo:</b> ${indirizzo || "-"}</p>
+      <p><b>Comune:</b> ${comune || "-"}</p>
+      <p><b>CAP:</b> ${cap || "-"}</p>
+      <p><b>Telefono:</b> ${telefono || "-"}</p>
+      <p><b>Email:</b> ${email || "-"}</p>
+      <p><b>IBAN:</b> ${iban || "-"}</p>
+      ${
+        descrizione
+          ? `<p><b>Descrizione attività:</b><br/>${descrizione}</p>`
+          : ""
+      }
+      <hr/>
+      <p style="font-size:12px;color:#555">Inviato il ${new Date().toLocaleString(
+        "it-IT"
+      )}</p>
+    `;
+
+    await sendToInternalsAndClient({
+      toInternals,
+      toClient: email,
+      subject,
+      html,
+      attachments: atts,
+      brand: BRAND,
+      replyTo: email,
+    });
+
+    return res.json({
+      ok: true,
+      message: "Onboarding inviato a interni + cliente",
+    });
+  } catch (err) {
+    console.error("Errore /api/onboarding-azienda:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Errore invio",
+      error: String(err?.message || err),
+    });
+  }
+});
+
 // ================== NUOVI ENDPOINT PER MODULI ==================
 
 const DEFAULTS = {
