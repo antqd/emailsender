@@ -300,11 +300,175 @@ app.post("/api/sendToInternalOnly", async (req, res) => {
   }
 });
 
+// routes/ct3.js (o dentro il tuo index)
+app.post("/api/ct3-invio", async (req, res) => {
+  try {
+    const BRAND = "MeglioEfficientare";
+    const {
+      privato = {},
+      azienda = {},
+      luogoedata,
+      relazioneTesto, // stringa -> la trasformiamo in .txt
+      allegati = {}, // gruppi con array {filename, base64, mime}
+    } = req.body || {};
+
+    // pick nome/email/iban minimi per validazione base
+    const ragioneSociale =
+      azienda?.denominazione ||
+      `${privato?.nome || ""} ${privato?.cognome || ""}`.trim();
+    const email = privato?.email || azienda?.email;
+    const iban = privato?.iban || azienda?.iban;
+
+    if (!ragioneSociale || !email || !iban) {
+      return res.status(400).json({
+        ok: false,
+        message: "ragioneSociale, email e IBAN sono obbligatori",
+      });
+    }
+
+    // helper: normalizza array allegati
+    const mapMany = (
+      arr,
+      fallbackName,
+      fallbackMime = "application/octet-stream"
+    ) => {
+      const list = Array.isArray(arr) ? arr : arr ? [arr] : [];
+      return list
+        .filter((f) => f && (f.base64 || f.contentBase64 || f.content))
+        .map((f, i) => ({
+          filename:
+            f.filename ||
+            `${fallbackName.replace(/(\.\w+)?$/, "")}${
+              list.length > 1 ? `_${i + 1}` : ""
+            }${(fallbackName.match(/\.\w+$/) || [".bin"])[0]}`,
+          content: Buffer.from(
+            f.base64 || f.contentBase64 || f.content,
+            "base64"
+          ),
+          encoding: "base64",
+          contentType: f.mime || fallbackMime,
+        }));
+    };
+
+    const atts = [
+      // gruppi richiesti
+      ...mapMany(
+        allegati?.codice_fiscale,
+        "codice_fiscale.pdf",
+        "application/pdf"
+      ),
+      ...mapMany(
+        allegati?.documento_identita,
+        "documento_identita.pdf",
+        "application/pdf"
+      ),
+      ...mapMany(allegati?.catastale, "catastale.pdf", "application/pdf"),
+      ...mapMany(
+        allegati?.foto_generatore,
+        "foto_generatore.jpg",
+        "image/jpeg"
+      ),
+      ...mapMany(allegati?.visura, "visura.pdf", "application/pdf"),
+      // pdf modulo
+      ...mapMany(
+        allegati?.pdf_modulo,
+        "contratto_conto_termico.pdf",
+        "application/pdf"
+      ),
+      // firme opzionali
+      ...mapMany(
+        allegati?.firma_beneficiario,
+        "firma_beneficiario.png",
+        "image/png"
+      ),
+      ...mapMany(
+        allegati?.firma_responsabile,
+        "firma_responsabile.png",
+        "image/png"
+      ),
+    ];
+
+    // relazione tecnica commerciale -> TXT
+    if (relazioneTesto && String(relazioneTesto).trim().length) {
+      atts.push({
+        filename: "relazione_tecnica.txt",
+        content: Buffer.from(String(relazioneTesto), "utf8"),
+        contentType: "text/plain; charset=utf-8",
+      });
+    }
+
+    // corpo email riassuntivo
+    const subject = `[CT3] ${BRAND} – ${ragioneSociale}`;
+    const html = `
+      <h2>Contratto Conto Termico 3.0</h2>
+
+      <h3>Beneficiario — Privato</h3>
+      <p><b>Nome:</b> ${privato?.nome || "-"}</p>
+      <p><b>Cognome:</b> ${privato?.cognome || "-"}</p>
+      <p><b>IBAN:</b> ${privato?.iban || "-"}</p>
+      <p><b>Indirizzo:</b> ${privato?.indirizzo || "-"}</p>
+      <p><b>Comune:</b> ${privato?.comune || "-"}</p>
+      <p><b>CAP:</b> ${privato?.cap || "-"}</p>
+      <p><b>Telefono:</b> ${privato?.telefono || "-"}</p>
+      <p><b>Email:</b> ${privato?.email || "-"}</p>
+
+      <h3>Beneficiario — Azienda</h3>
+      <p><b>Denominazione:</b> ${azienda?.denominazione || "-"}</p>
+      <p><b>IBAN:</b> ${azienda?.iban || "-"}</p>
+      <p><b>Indirizzo:</b> ${azienda?.indirizzo || "-"}</p>
+      <p><b>Comune:</b> ${azienda?.comune || "-"}</p>
+      <p><b>CAP:</b> ${azienda?.cap || "-"}</p>
+      <p><b>Telefono:</b> ${azienda?.telefono || "-"}</p>
+      <p><b>Email:</b> ${azienda?.email || "-"}</p>
+
+      <p><b>Luogo e data (pag.2):</b> ${luogoedata || "-"}</p>
+
+      <hr/>
+      <p style="font-size:12px;color:#555">Inviato il ${new Date().toLocaleString(
+        "it-IT"
+      )}</p>
+    `;
+
+    // Invia a interni + cliente
+    await Promise.all([
+      transporter.sendMail({
+        from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+        to: ["backoffice@megliomeglio.it"], // <-- cambia con tua mail interna
+        subject,
+        html,
+        attachments: atts,
+        replyTo: email,
+      }),
+      transporter.sendMail({
+        from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject,
+        html,
+        attachments: atts,
+      }),
+    ]);
+
+    return res.json({
+      ok: true,
+      message: "Email inviata a backoffice + cliente",
+    });
+  } catch (err) {
+    console.error("Errore /api/ct3-invio:", err);
+    return res
+      .status(500)
+      .json({
+        ok: false,
+        message: "Errore invio",
+        error: String(err?.message || err),
+      });
+  }
+});
+
 // === DIVENTA PARTNER MANAGER (interni: megliodojo + copia al cliente) ===
 app.post("/api/diventa-partner-manager", async (req, res) => {
   try {
-    const BRAND = 'Dojo';
-    
+    const BRAND = "Dojo";
+
     const {
       ragioneSociale,
       indirizzo,
@@ -332,10 +496,13 @@ app.post("/api/diventa-partner-manager", async (req, res) => {
         .map((f, i) => ({
           filename:
             f.filename ||
-            `${fallbackName.replace(/(\.\w+)?$/, "")}${list.length > 1 ? `_${i + 1}` : ""}${
-              (fallbackName.match(/\.\w+$/) || [".pdf"])[0]
-            }`,
-          content: Buffer.from(f.base64 || f.contentBase64 || f.content, "base64"),
+            `${fallbackName.replace(/(\.\w+)?$/, "")}${
+              list.length > 1 ? `_${i + 1}` : ""
+            }${(fallbackName.match(/\.\w+$/) || [".pdf"])[0]}`,
+          content: Buffer.from(
+            f.base64 || f.contentBase64 || f.content,
+            "base64"
+          ),
           encoding: "base64",
           contentType: f.mime || fallbackMime,
         }));
@@ -344,8 +511,16 @@ app.post("/api/diventa-partner-manager", async (req, res) => {
     // allegati: visura/doc/cf multipli + firma (singola ma gestita con mapMany per semplicità)
     const atts = [
       ...mapMany(allegati?.visura, "visura.pdf", "application/pdf"),
-      ...mapMany(allegati?.documento_identita, "documento_identita.pdf", "application/pdf"),
-      ...mapMany(allegati?.codice_fiscale, "codice_fiscale.pdf", "application/pdf"),
+      ...mapMany(
+        allegati?.documento_identita,
+        "documento_identita.pdf",
+        "application/pdf"
+      ),
+      ...mapMany(
+        allegati?.codice_fiscale,
+        "codice_fiscale.pdf",
+        "application/pdf"
+      ),
       ...mapMany(allegati?.firma, "firma.png", "image/png"),
     ];
 
@@ -359,9 +534,15 @@ app.post("/api/diventa-partner-manager", async (req, res) => {
       <p><b>Telefono:</b> ${telefono || "-"}</p>
       <p><b>Email:</b> ${email || "-"}</p>
       <p><b>IBAN:</b> ${iban || "-"}</p>
-      ${descrizione ? `<p><b>Descrizione attività:</b><br/>${descrizione}</p>` : ""}
+      ${
+        descrizione
+          ? `<p><b>Descrizione attività:</b><br/>${descrizione}</p>`
+          : ""
+      }
       <hr/>
-      <p style="font-size:12px;color:#555">Inviato il ${new Date().toLocaleString("it-IT")}</p>
+      <p style="font-size:12px;color:#555">Inviato il ${new Date().toLocaleString(
+        "it-IT"
+      )}</p>
     `;
 
     // invio a interni + cliente
@@ -383,7 +564,10 @@ app.post("/api/diventa-partner-manager", async (req, res) => {
       }),
     ]);
 
-    return res.json({ ok: true, message: "Email inviata a megliodojo + cliente" });
+    return res.json({
+      ok: true,
+      message: "Email inviata a megliodojo + cliente",
+    });
   } catch (err) {
     console.error("Errore /api/diventa-partner-manager:", err);
     return res.status(500).json({
@@ -393,7 +577,6 @@ app.post("/api/diventa-partner-manager", async (req, res) => {
     });
   }
 });
-
 
 // ================== NUOVI ENDPOINT PER MODULI ==================
 
