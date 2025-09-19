@@ -405,22 +405,6 @@ app.post("/api/ct3-invio", async (req, res) => {
       <h3>Beneficiario — Privato</h3>
       <p><b>Nome:</b> ${privato?.nome || "-"}</p>
       <p><b>Cognome:</b> ${privato?.cognome || "-"}</p>
-      <p><b>IBAN:</b> ${privato?.iban || "-"}</p>
-      <p><b>Indirizzo:</b> ${privato?.indirizzo || "-"}</p>
-      <p><b>Comune:</b> ${privato?.comune || "-"}</p>
-      <p><b>CAP:</b> ${privato?.cap || "-"}</p>
-      <p><b>Telefono:</b> ${privato?.telefono || "-"}</p>
-      <p><b>Email:</b> ${privato?.email || "-"}</p>
-
-      <h3>Beneficiario — Azienda</h3>
-      <p><b>Denominazione:</b> ${azienda?.denominazione || "-"}</p>
-      <p><b>IBAN:</b> ${azienda?.iban || "-"}</p>
-      <p><b>Indirizzo:</b> ${azienda?.indirizzo || "-"}</p>
-      <p><b>Comune:</b> ${azienda?.comune || "-"}</p>
-      <p><b>CAP:</b> ${azienda?.cap || "-"}</p>
-      <p><b>Telefono:</b> ${azienda?.telefono || "-"}</p>
-      <p><b>Email:</b> ${azienda?.email || "-"}</p>
-
       <p><b>Luogo e data (pag.2):</b> ${luogoedata || "-"}</p>
 
       <hr/>
@@ -433,7 +417,7 @@ app.post("/api/ct3-invio", async (req, res) => {
     await Promise.all([
       transporter.sendMail({
         from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
-        to: ["backoffice@energyplanner.it"], // <-- cambia con tua mail interna
+        to: ["megliorisparmiare@gmail.com"], // <-- cambia con tua mail interna
         subject,
         html,
         attachments: atts,
