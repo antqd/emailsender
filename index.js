@@ -433,7 +433,7 @@ app.post("/api/ct3-invio", async (req, res) => {
     await Promise.all([
       transporter.sendMail({
         from: `"${BRAND}" <${process.env.EMAIL_USER}>`,
-        to: ["backoffice@megliomeglio.it"], // <-- cambia con tua mail interna
+        to: ["backoffice@energyplanner.it"], // <-- cambia con tua mail interna
         subject,
         html,
         attachments: atts,
